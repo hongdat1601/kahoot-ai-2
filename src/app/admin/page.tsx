@@ -1224,7 +1224,7 @@ export default function AdminDashboard() {
                     <X className="h-4 w-4" />
                   </button>
                 </div>
-                <div className="flex flex-1 flex-col gap-4 px-6 py-4">
+                <div className="flex flex-1 min-h-0 flex-col gap-4 px-6 py-4">
                   <div className="flex-1 overflow-y-auto pr-1">
                     {aiMessages.length === 0 ? (
                       <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-6 py-10 text-center text-sm text-gray-500">
