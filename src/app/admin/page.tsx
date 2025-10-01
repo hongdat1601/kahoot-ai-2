@@ -1208,7 +1208,7 @@ export default function AdminDashboard() {
         {showAiModal && (
           <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4">
             <div className="w-full max-w-xl">
-              <div className="relative flex max-h-[90vh] min-h-[480px] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+              <div className="relative flex max-h-[90vh] min-h-0 flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
                 <div className="flex items-start justify-between border-b border-gray-200 px-6 py-4">
                   <div>
                     <h3 className="text-xl font-semibold text-gray-900">Create Game with AI</h3>
