@@ -343,6 +343,16 @@ export default function AdminDashboard() {
     );
   }, [sortedQuestions, currentQuestionPage]);
 
+  const latestAiGamePlan = useMemo(() => {
+    for (let index = aiMessages.length - 1; index >= 0; index -= 1) {
+      const message = aiMessages[index];
+      if (message.role === "ai" && message.gamePlan) {
+        return message.gamePlan;
+      }
+    }
+    return null;
+  }, [aiMessages]);
+
   const handleFilterChange = (status: number) => {
     setQuestionFilter((prev) =>
       prev.includes(status)
