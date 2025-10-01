@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DashboardHeader } from "@/components/admin/DashboardHeader";
 import { DashboardSidebar } from "@/components/admin/DashboardSidebar";
@@ -19,10 +19,14 @@ import {
   Mail,
   Hash,
   ChevronDown,
+  Sparkles,
+  Send,
+  Loader2,
+  CheckCircle2,
 } from "lucide-react";
 import ProtectedPage from "@/components/ProtectedPage";
 import { useAuth } from "@/context/AuthContext";
-import { GameState, SortDirection } from "@/types/api";
+import { GameState, QuestionType, SortDirection } from "@/types/api";
 import { GameSortBy } from "@/types/game";
 import { useGameMutations, useGames } from "@/hooks/useGames";
 import { useAnalyze } from "@/hooks/useAnalyze";
@@ -40,6 +44,147 @@ export interface FilterItem {
   id: GameState;
   lable: string;
 }
+
+interface AiAnswerPlan {
+  text: string;
+  isCorrect: boolean;
+}
+
+interface AiQuestionPlan {
+  title: string;
+  type: QuestionType;
+  answers: AiAnswerPlan[];
+}
+
+interface AiGamePlan {
+  title: string;
+  description: string;
+  questions: AiQuestionPlan[];
+}
+
+interface AiChatMessage {
+  id: string;
+  role: "user" | "ai";
+  content: string;
+  createdAt: number;
+  gamePlan?: AiGamePlan;
+}
+
+const questionTypeDisplayMap: Record<QuestionType, string> = {
+  [QuestionType.SingleChoice]: "Single Choice",
+  [QuestionType.MultipleChoice]: "Multiple Choice",
+  [QuestionType.TrueFalse]: "True/False",
+};
+
+const createChatMessageId = () =>
+  typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+
+const toTitleCase = (text: string) =>
+  text
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+
+const extractThemeFromPrompt = (prompt: string) => {
+  const cleaned = prompt.replace(/[.!?]/g, " ").trim();
+  if (!cleaned) {
+    return "General Knowledge";
+  }
+
+  const keywords = cleaned
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 4)
+    .join(" ");
+
+  return toTitleCase(keywords);
+};
+
+const buildAiGameResponse = (prompt: string): { message: string; plan: AiGamePlan } => {
+  const theme = extractThemeFromPrompt(prompt);
+  const title = `${theme} Challenge`;
+  const description = `An interactive quiz that helps players explore key ideas about ${theme.toLowerCase()}.`;
+
+  const singleChoiceAnswers: AiAnswerPlan[] = [
+    {
+      text: `Core fact about ${theme.toLowerCase()}`,
+      isCorrect: true,
+    },
+    {
+      text: `Common misconception about ${theme.toLowerCase()}`,
+      isCorrect: false,
+    },
+    {
+      text: `Advanced detail loosely related to ${theme.toLowerCase()}`,
+      isCorrect: false,
+    },
+    {
+      text: `Introductory concept in ${theme.toLowerCase()}`,
+      isCorrect: false,
+    },
+  ];
+
+  const multipleChoiceAnswers: AiAnswerPlan[] = [
+    {
+      text: `Fundamental principle of ${theme.toLowerCase()}`,
+      isCorrect: true,
+    },
+    {
+      text: `Supporting detail for ${theme.toLowerCase()}`,
+      isCorrect: true,
+    },
+    {
+      text: `Distractor concept` ,
+      isCorrect: false,
+    },
+    {
+      text: `Another distractor` ,
+      isCorrect: false,
+    },
+  ];
+
+  const trueFalseAnswers: AiAnswerPlan[] = [
+    {
+      text: `${theme} always follows the same pattern`,
+      isCorrect: false,
+    },
+    {
+      text: `${theme} can vary based on context`,
+      isCorrect: true,
+    },
+  ];
+
+  const questions: AiQuestionPlan[] = [
+    {
+      title: `What best describes ${theme.toLowerCase()}?`,
+      type: QuestionType.SingleChoice,
+      answers: singleChoiceAnswers,
+    },
+    {
+      title: `Select the statements that are true about ${theme.toLowerCase()}.`,
+      type: QuestionType.MultipleChoice,
+      answers: multipleChoiceAnswers,
+    },
+    {
+      title: `True or False: ${theme} is always interpreted the same way by everyone.`,
+      type: QuestionType.TrueFalse,
+      answers: trueFalseAnswers,
+    },
+  ];
+
+  return {
+    message: "Here is the game created based on the request:",
+    plan: {
+      title,
+      description,
+      questions,
+    },
+  };
+};
 
 const sortOptions: SortItem[] = [
   {
