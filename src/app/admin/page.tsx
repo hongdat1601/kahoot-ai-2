@@ -138,11 +138,11 @@ const buildAiGameResponse = (prompt: string): { message: string; plan: AiGamePla
       isCorrect: true,
     },
     {
-      text: `Distractor concept` ,
+      text: `Detail that doesn't apply to ${theme.toLowerCase()}`,
       isCorrect: false,
     },
     {
-      text: `Another distractor` ,
+      text: "Unrelated fact for contrast",
       isCorrect: false,
     },
   ];
