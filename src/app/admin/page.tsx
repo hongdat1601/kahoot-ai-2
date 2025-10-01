@@ -668,13 +668,24 @@ export default function AdminDashboard() {
                       <Gamepad2 className="h-6 w-6 text-green-600" />
                       <h2 className="text-2xl font-bold text-gray-900">Game</h2>
                     </div>
-                    <button
-                      onClick={handleCreateQuestion}
-                      className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                    >
-                      <SquarePlus className="h-4 w-4" />
-                      <span>Create Game</span>
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={handleCreateQuestion}
+                        className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                      >
+                        <SquarePlus className="h-4 w-4" />
+                        <span>Create Game</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowAiModal(true)}
+                        className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        <span>Create Game AI</span>
+                      </button>
+                    </div>
                   </div>
                   <div className="p-6 space-y-8">
                     {/* Recent Game Subsection */}
