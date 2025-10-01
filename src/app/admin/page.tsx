@@ -327,6 +327,14 @@ export default function AdminDashboard() {
     }
   }, [questionSort, questionFilter, authLoading]);
 
+  useEffect(() => {
+    return () => {
+      if (aiResponseTimerRef.current) {
+        clearTimeout(aiResponseTimerRef.current);
+      }
+    };
+  }, []);
+
   // Filter and sort logic
   const sortedQuestions = useMemo(() => {
     return games.filter((game) => questionFilter.includes(game.state));
