@@ -361,6 +361,8 @@ export default function AdminDashboard() {
     return null;
   }, [aiMessages]);
 
+  const canSendAiPrompt = aiInputValue.trim().length > 0;
+
   const handleFilterChange = (status: number) => {
     setQuestionFilter((prev) =>
       prev.includes(status)
