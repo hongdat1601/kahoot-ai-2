@@ -484,6 +484,7 @@ export default function AdminDashboard() {
       aiResponseTimerRef.current = null;
     }
     setIsAiResponding(false);
+    setAiInputValue("");
     setShowAiModal(false);
   };
 
