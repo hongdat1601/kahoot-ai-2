@@ -1205,6 +1205,144 @@ export default function AdminDashboard() {
             </div>
           </main>
         </div>
+        {showAiModal && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4">
+            <div className="w-full max-w-xl">
+              <div className="relative flex max-h-[90vh] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+                <div className="flex items-start justify-between border-b border-gray-200 px-6 py-4">
+                  <div>
+                    <h3 className="text-xl font-semibold text-gray-900">Create Game with AI</h3>
+                    <p className="text-sm text-gray-500">
+                      Describe your idea and review the generated quiz before saving.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCloseAiModal}
+                    className="rounded-full p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="flex flex-1 flex-col gap-4 px-6 py-4">
+                  <div className="flex-1 overflow-y-auto pr-1">
+                    {aiMessages.length === 0 ? (
+                      <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-6 py-10 text-center text-sm text-gray-500">
+                        Start by describing the game you want to build. The AI will reply with a full game outline.
+                      </div>
+                    ) : (
+                      <div className="space-y-4 pb-2">
+                        {aiMessages.map((message) => {
+                          const isUser = message.role === "user";
+                          return (
+                            <div
+                              key={message.id}
+                              className={`flex ${isUser ? "justify-end" : "justify-start"}`}
+                            >
+                              <div
+                                className={`max-w-[80%] rounded-2xl px-4 py-3 shadow-sm transition-all ${
+                                  isUser ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-900"
+                                }`}
+                              >
+                                <p className="text-sm leading-relaxed">{message.content}</p>
+                                {message.gamePlan && (
+                                  <div className="mt-4 rounded-2xl border border-gray-200 bg-white text-gray-900 shadow-sm">
+                                    <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+                                      <h4 className="text-lg font-semibold">{message.gamePlan.title}</h4>
+                                      <p className="mt-1 text-sm text-gray-600">
+                                        {message.gamePlan.description}
+                                      </p>
+                                    </div>
+                                    <div className="divide-y divide-gray-100">
+                                      {message.gamePlan.questions.map((question, index) => (
+                                        <div key={`${question.title}-${index}`} className="px-4 py-3">
+                                          <div className="flex items-start justify-between gap-2">
+                                            <h5 className="text-base font-semibold text-gray-900">
+                                              {question.title}
+                                            </h5>
+                                            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium uppercase tracking-wide text-blue-600">
+                                              {questionTypeDisplayMap[question.type]}
+                                            </span>
+                                          </div>
+                                          <div className="mt-3 space-y-2">
+                                            {question.answers.map((answer, answerIndex) => (
+                                              <div
+                                                key={`${question.title}-answer-${answerIndex}`}
+                                                className={`flex items-start gap-2 rounded-xl border px-3 py-2 ${
+                                                  answer.isCorrect
+                                                    ? "border-green-500 bg-green-50 text-green-700"
+                                                    : "border-gray-200 bg-white text-gray-700"
+                                                }`}
+                                              >
+                                                {answer.isCorrect ? (
+                                                  <CheckCircle2 className="mt-0.5 h-4 w-4 text-green-600" />
+                                                ) : (
+                                                  <span className="mt-1 h-2 w-2 rounded-full bg-gray-300" />
+                                                )}
+                                                <span className="text-sm leading-relaxed">{answer.text}</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {isAiResponding && (
+                      <div className="mt-4 flex justify-start">
+                        <div className="inline-flex items-center gap-2 rounded-2xl bg-gray-100 px-4 py-3 text-sm text-gray-600 shadow-sm">
+                          <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
+                          <span>Generating game idea...</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <form onSubmit={handleAiMessageSend} className="border-t border-gray-200 pt-4">
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      <input
+                        value={aiInputValue}
+                        onChange={(event) => setAiInputValue(event.target.value)}
+                        placeholder="Describe the game you want to create..."
+                        className="w-full rounded-full border border-gray-300 px-4 py-3 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 sm:flex-1"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!canSendAiPrompt || isAiResponding}
+                        className="flex items-center justify-center gap-2 rounded-full bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isAiResponding ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Send className="h-4 w-4" />
+                        )}
+                        <span>Send</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCreateAiGameFromPlan}
+                        disabled={!latestAiGamePlan || isCreatingFromAi}
+                        className="flex items-center justify-center gap-2 rounded-full bg-green-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isCreatingFromAi ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-4 w-4" />
+                        )}
+                        <span>Create</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     // </ProtectedPage>
   );
