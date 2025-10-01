@@ -291,6 +291,12 @@ export default function AdminDashboard() {
   const [questionViewMode, setQuestionViewMode] = useState<"card" | "list">(
     "card"
   );
+  const [showAiModal, setShowAiModal] = useState(false);
+  const [aiMessages, setAiMessages] = useState<AiChatMessage[]>([]);
+  const [aiInputValue, setAiInputValue] = useState("");
+  const [isAiResponding, setIsAiResponding] = useState(false);
+  const [isCreatingFromAi, setIsCreatingFromAi] = useState(false);
+  const aiResponseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [questionFilter, setQuestionFilter] = useState<number[]>([
     GameState.Active,
