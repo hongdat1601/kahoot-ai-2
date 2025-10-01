@@ -476,6 +476,101 @@ export default function AdminDashboard() {
     window.location.href = `/admin/game/${questionId}`;
   };
 
+  const handleCloseAiModal = () => {
+    if (aiResponseTimerRef.current) {
+      clearTimeout(aiResponseTimerRef.current);
+      aiResponseTimerRef.current = null;
+    }
+    setIsAiResponding(false);
+    setShowAiModal(false);
+  };
+
+  const handleAiMessageSend = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmedMessage = aiInputValue.trim();
+
+    if (!trimmedMessage || isAiResponding) {
+      return;
+    }
+
+    const userMessage: AiChatMessage = {
+      id: createChatMessageId(),
+      role: "user",
+      content: trimmedMessage,
+      createdAt: Date.now(),
+    };
+
+    setAiMessages((prev) => [...prev, userMessage]);
+    setAiInputValue("");
+    setIsAiResponding(true);
+
+    aiResponseTimerRef.current = setTimeout(() => {
+      const response = buildAiGameResponse(trimmedMessage);
+      const aiMessage: AiChatMessage = {
+        id: createChatMessageId(),
+        role: "ai",
+        content: response.message,
+        createdAt: Date.now(),
+        gamePlan: response.plan,
+      };
+
+      setAiMessages((prev) => [...prev, aiMessage]);
+      setIsAiResponding(false);
+      aiResponseTimerRef.current = null;
+    }, 1200);
+  };
+
+  const handleCreateAiGameFromPlan = async () => {
+    if (!latestAiGamePlan || isCreatingFromAi) {
+      return;
+    }
+
+    try {
+      setIsCreatingFromAi(true);
+      const gameId = await createGame({
+        title: latestAiGamePlan.title,
+        description: latestAiGamePlan.description,
+      });
+
+      if (!gameId) {
+        throw new Error("Failed to create game");
+      }
+
+      for (const questionPlan of latestAiGamePlan.questions) {
+        const questionId = await createQuestion(gameId, {
+          gameId,
+          title: questionPlan.title,
+          timeLimitSeconds:
+            questionPlan.type === QuestionType.TrueFalse ? 20 : 30,
+          type: questionPlan.type,
+        });
+
+        if (!questionId) {
+          throw new Error("Failed to create question");
+        }
+
+        await createAnswers(gameId, questionId, {
+          gameId,
+          questionId,
+          questionType: questionPlan.type,
+          answers: questionPlan.answers.map((answer) => ({
+            gameId,
+            questionId,
+            title: answer.text,
+            isCorrect: answer.isCorrect,
+          })),
+        });
+      }
+
+      window.location.href = `/admin/game/${gameId}`;
+    } catch (error) {
+      console.error(error);
+      window.alert("Unable to create game from AI suggestions. Please try again.");
+    } finally {
+      setIsCreatingFromAi(false);
+    }
+  };
+
   // Refs for sections
   const dashboardRef = useRef<HTMLElement>(null);
   const questionsRef = useRef<HTMLElement>(null);
