@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DashboardHeader } from "@/components/admin/DashboardHeader";
 import { DashboardSidebar } from "@/components/admin/DashboardSidebar";
@@ -19,10 +19,14 @@ import {
   Mail,
   Hash,
   ChevronDown,
+  Sparkles,
+  Send,
+  Loader2,
+  CheckCircle2,
 } from "lucide-react";
 import ProtectedPage from "@/components/ProtectedPage";
 import { useAuth } from "@/context/AuthContext";
-import { GameState, SortDirection } from "@/types/api";
+import { GameState, QuestionType, SortDirection } from "@/types/api";
 import { GameSortBy } from "@/types/game";
 import { useGameMutations, useGames } from "@/hooks/useGames";
 import { useAnalyze } from "@/hooks/useAnalyze";
@@ -40,6 +44,147 @@ export interface FilterItem {
   id: GameState;
   lable: string;
 }
+
+interface AiAnswerPlan {
+  text: string;
+  isCorrect: boolean;
+}
+
+interface AiQuestionPlan {
+  title: string;
+  type: QuestionType;
+  answers: AiAnswerPlan[];
+}
+
+interface AiGamePlan {
+  title: string;
+  description: string;
+  questions: AiQuestionPlan[];
+}
+
+interface AiChatMessage {
+  id: string;
+  role: "user" | "ai";
+  content: string;
+  createdAt: number;
+  gamePlan?: AiGamePlan;
+}
+
+const questionTypeDisplayMap: Record<QuestionType, string> = {
+  [QuestionType.SingleChoice]: "Single Choice",
+  [QuestionType.MultipleChoice]: "Multiple Choice",
+  [QuestionType.TrueFalse]: "True/False",
+};
+
+const createChatMessageId = () =>
+  typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+
+const toTitleCase = (text: string) =>
+  text
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+
+const extractThemeFromPrompt = (prompt: string) => {
+  const cleaned = prompt.replace(/[.!?]/g, " ").trim();
+  if (!cleaned) {
+    return "General Knowledge";
+  }
+
+  const keywords = cleaned
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 4)
+    .join(" ");
+
+  return toTitleCase(keywords);
+};
+
+const buildAiGameResponse = (prompt: string): { message: string; plan: AiGamePlan } => {
+  const theme = extractThemeFromPrompt(prompt);
+  const title = `${theme} Challenge`;
+  const description = `An interactive quiz that helps players explore key ideas about ${theme.toLowerCase()}.`;
+
+  const singleChoiceAnswers: AiAnswerPlan[] = [
+    {
+      text: `Core fact about ${theme.toLowerCase()}`,
+      isCorrect: true,
+    },
+    {
+      text: `Common misconception about ${theme.toLowerCase()}`,
+      isCorrect: false,
+    },
+    {
+      text: `Advanced detail loosely related to ${theme.toLowerCase()}`,
+      isCorrect: false,
+    },
+    {
+      text: `Introductory concept in ${theme.toLowerCase()}`,
+      isCorrect: false,
+    },
+  ];
+
+  const multipleChoiceAnswers: AiAnswerPlan[] = [
+    {
+      text: `Fundamental principle of ${theme.toLowerCase()}`,
+      isCorrect: true,
+    },
+    {
+      text: `Supporting detail for ${theme.toLowerCase()}`,
+      isCorrect: true,
+    },
+    {
+      text: `Detail that doesn't apply to ${theme.toLowerCase()}`,
+      isCorrect: false,
+    },
+    {
+      text: "Unrelated fact for contrast",
+      isCorrect: false,
+    },
+  ];
+
+  const trueFalseAnswers: AiAnswerPlan[] = [
+    {
+      text: `${theme} always follows the same pattern`,
+      isCorrect: false,
+    },
+    {
+      text: `${theme} can vary based on context`,
+      isCorrect: true,
+    },
+  ];
+
+  const questions: AiQuestionPlan[] = [
+    {
+      title: `What best describes ${theme.toLowerCase()}?`,
+      type: QuestionType.SingleChoice,
+      answers: singleChoiceAnswers,
+    },
+    {
+      title: `Select the statements that are true about ${theme.toLowerCase()}.`,
+      type: QuestionType.MultipleChoice,
+      answers: multipleChoiceAnswers,
+    },
+    {
+      title: `True or False: ${theme} is always interpreted the same way by everyone.`,
+      type: QuestionType.TrueFalse,
+      answers: trueFalseAnswers,
+    },
+  ];
+
+  return {
+    message: "Here is the game created based on the request:",
+    plan: {
+      title,
+      description,
+      questions,
+    },
+  };
+};
 
 const sortOptions: SortItem[] = [
   {
@@ -146,6 +291,12 @@ export default function AdminDashboard() {
   const [questionViewMode, setQuestionViewMode] = useState<"card" | "list">(
     "card"
   );
+  const [showAiModal, setShowAiModal] = useState(false);
+  const [aiMessages, setAiMessages] = useState<AiChatMessage[]>([]);
+  const [aiInputValue, setAiInputValue] = useState("");
+  const [isAiResponding, setIsAiResponding] = useState(false);
+  const [isCreatingFromAi, setIsCreatingFromAi] = useState(false);
+  const aiResponseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [questionFilter, setQuestionFilter] = useState<number[]>([
     GameState.Active,
@@ -176,6 +327,14 @@ export default function AdminDashboard() {
     }
   }, [questionSort, questionFilter, authLoading]);
 
+  useEffect(() => {
+    return () => {
+      if (aiResponseTimerRef.current) {
+        clearTimeout(aiResponseTimerRef.current);
+      }
+    };
+  }, []);
+
   // Filter and sort logic
   const sortedQuestions = useMemo(() => {
     return games.filter((game) => questionFilter.includes(game.state));
@@ -191,6 +350,18 @@ export default function AdminDashboard() {
       currentQuestionPage * questionsPerPage
     );
   }, [sortedQuestions, currentQuestionPage]);
+
+  const latestAiGamePlan = useMemo(() => {
+    for (let index = aiMessages.length - 1; index >= 0; index -= 1) {
+      const message = aiMessages[index];
+      if (message.role === "ai" && message.gamePlan) {
+        return message.gamePlan;
+      }
+    }
+    return null;
+  }, [aiMessages]);
+
+  const canSendAiPrompt = aiInputValue.trim().length > 0;
 
   const handleFilterChange = (status: number) => {
     setQuestionFilter((prev) =>
@@ -307,6 +478,102 @@ export default function AdminDashboard() {
     window.location.href = `/admin/game/${questionId}`;
   };
 
+  const handleCloseAiModal = () => {
+    if (aiResponseTimerRef.current) {
+      clearTimeout(aiResponseTimerRef.current);
+      aiResponseTimerRef.current = null;
+    }
+    setIsAiResponding(false);
+    setAiInputValue("");
+    setShowAiModal(false);
+  };
+
+  const handleAiMessageSend = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmedMessage = aiInputValue.trim();
+
+    if (!trimmedMessage || isAiResponding) {
+      return;
+    }
+
+    const userMessage: AiChatMessage = {
+      id: createChatMessageId(),
+      role: "user",
+      content: trimmedMessage,
+      createdAt: Date.now(),
+    };
+
+    setAiMessages((prev) => [...prev, userMessage]);
+    setAiInputValue("");
+    setIsAiResponding(true);
+
+    aiResponseTimerRef.current = setTimeout(() => {
+      const response = buildAiGameResponse(trimmedMessage);
+      const aiMessage: AiChatMessage = {
+        id: createChatMessageId(),
+        role: "ai",
+        content: response.message,
+        createdAt: Date.now(),
+        gamePlan: response.plan,
+      };
+
+      setAiMessages((prev) => [...prev, aiMessage]);
+      setIsAiResponding(false);
+      aiResponseTimerRef.current = null;
+    }, 1200);
+  };
+
+  const handleCreateAiGameFromPlan = async () => {
+    if (!latestAiGamePlan || isCreatingFromAi) {
+      return;
+    }
+
+    try {
+      setIsCreatingFromAi(true);
+      const gameId = await createGame({
+        title: latestAiGamePlan.title,
+        description: latestAiGamePlan.description,
+      });
+
+      if (!gameId) {
+        throw new Error("Failed to create game");
+      }
+
+      for (const questionPlan of latestAiGamePlan.questions) {
+        const questionId = await createQuestion(gameId, {
+          gameId,
+          title: questionPlan.title,
+          timeLimitSeconds:
+            questionPlan.type === QuestionType.TrueFalse ? 20 : 30,
+          type: questionPlan.type,
+        });
+
+        if (!questionId) {
+          throw new Error("Failed to create question");
+        }
+
+        await createAnswers(gameId, questionId, {
+          gameId,
+          questionId,
+          questionType: questionPlan.type,
+          answers: questionPlan.answers.map((answer) => ({
+            gameId,
+            questionId,
+            title: answer.text,
+            isCorrect: answer.isCorrect,
+          })),
+        });
+      }
+
+      window.location.href = `/admin/game/${gameId}`;
+    } catch (error) {
+      console.error(error);
+      window.alert("Unable to create game from AI suggestions. Please try again.");
+    } finally {
+      setIsCreatingFromAi(false);
+    }
+  };
+
   // Refs for sections
   const dashboardRef = useRef<HTMLElement>(null);
   const questionsRef = useRef<HTMLElement>(null);
@@ -404,13 +671,24 @@ export default function AdminDashboard() {
                       <Gamepad2 className="h-6 w-6 text-green-600" />
                       <h2 className="text-2xl font-bold text-gray-900">Game</h2>
                     </div>
-                    <button
-                      onClick={handleCreateQuestion}
-                      className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                    >
-                      <SquarePlus className="h-4 w-4" />
-                      <span>Create Game</span>
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={handleCreateQuestion}
+                        className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                      >
+                        <SquarePlus className="h-4 w-4" />
+                        <span>Create Game</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowAiModal(true)}
+                        className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        <span>Create Game AI</span>
+                      </button>
+                    </div>
                   </div>
                   <div className="p-6 space-y-8">
                     {/* Recent Game Subsection */}
@@ -927,6 +1205,144 @@ export default function AdminDashboard() {
             </div>
           </main>
         </div>
+        {showAiModal && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4">
+            <div className="w-full max-w-xl">
+              <div className="relative flex max-h-[90vh] min-h-0 flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+                <div className="flex items-start justify-between border-b border-gray-200 px-6 py-4">
+                  <div>
+                    <h3 className="text-xl font-semibold text-gray-900">Create Game with AI</h3>
+                    <p className="text-sm text-gray-500">
+                      Describe your idea and review the generated quiz before saving.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCloseAiModal}
+                    className="rounded-full p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="flex flex-1 min-h-0 flex-col gap-4 px-6 py-4">
+                  <div className="flex-1 overflow-y-auto pr-1">
+                    {aiMessages.length === 0 ? (
+                      <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-6 py-10 text-center text-sm text-gray-500">
+                        Start by describing the game you want to build. The AI will reply with a full game outline.
+                      </div>
+                    ) : (
+                      <div className="space-y-4 pb-2">
+                        {aiMessages.map((message) => {
+                          const isUser = message.role === "user";
+                          return (
+                            <div
+                              key={message.id}
+                              className={`flex ${isUser ? "justify-end" : "justify-start"}`}
+                            >
+                              <div
+                                className={`max-w-[80%] rounded-2xl px-4 py-3 shadow-sm transition-all ${
+                                  isUser ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-900"
+                                }`}
+                              >
+                                <p className="text-sm leading-relaxed">{message.content}</p>
+                                {message.gamePlan && (
+                                  <div className="mt-4 rounded-2xl border border-gray-200 bg-white text-gray-900 shadow-sm">
+                                    <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+                                      <h4 className="text-lg font-semibold">{message.gamePlan.title}</h4>
+                                      <p className="mt-1 text-sm text-gray-600">
+                                        {message.gamePlan.description}
+                                      </p>
+                                    </div>
+                                    <div className="divide-y divide-gray-100">
+                                      {message.gamePlan.questions.map((question, index) => (
+                                        <div key={`${question.title}-${index}`} className="px-4 py-3">
+                                          <div className="flex items-start justify-between gap-2">
+                                            <h5 className="text-base font-semibold text-gray-900">
+                                              {question.title}
+                                            </h5>
+                                            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium uppercase tracking-wide text-blue-600">
+                                              {questionTypeDisplayMap[question.type]}
+                                            </span>
+                                          </div>
+                                          <div className="mt-3 space-y-2">
+                                            {question.answers.map((answer, answerIndex) => (
+                                              <div
+                                                key={`${question.title}-answer-${answerIndex}`}
+                                                className={`flex items-start gap-2 rounded-xl border px-3 py-2 ${
+                                                  answer.isCorrect
+                                                    ? "border-green-500 bg-green-50 text-green-700"
+                                                    : "border-gray-200 bg-white text-gray-700"
+                                                }`}
+                                              >
+                                                {answer.isCorrect ? (
+                                                  <CheckCircle2 className="mt-0.5 h-4 w-4 text-green-600" />
+                                                ) : (
+                                                  <span className="mt-1 h-2 w-2 rounded-full bg-gray-300" />
+                                                )}
+                                                <span className="text-sm leading-relaxed">{answer.text}</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {isAiResponding && (
+                      <div className="mt-4 flex justify-start">
+                        <div className="inline-flex items-center gap-2 rounded-2xl bg-gray-100 px-4 py-3 text-sm text-gray-600 shadow-sm">
+                          <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
+                          <span>Generating game idea...</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <form onSubmit={handleAiMessageSend} className="border-t border-gray-200 pt-4">
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      <input
+                        value={aiInputValue}
+                        onChange={(event) => setAiInputValue(event.target.value)}
+                        placeholder="Describe the game you want to create..."
+                        className="w-full rounded-full border border-gray-300 px-4 py-3 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 sm:flex-1"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!canSendAiPrompt || isAiResponding}
+                        className="flex items-center justify-center gap-2 rounded-full bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isAiResponding ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Send className="h-4 w-4" />
+                        )}
+                        <span>Send</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCreateAiGameFromPlan}
+                        disabled={!latestAiGamePlan || isCreatingFromAi}
+                        className="flex items-center justify-center gap-2 rounded-full bg-green-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isCreatingFromAi ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-4 w-4" />
+                        )}
+                        <span>Create</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     // </ProtectedPage>
   );
